@@ -1,6 +1,23 @@
 # ProjectHailMary — Latency Budget
 # Version 0.8.0-alpha
 
+> **Status: superseded.** Written for 0.8.0-alpha, before the September 2026 audit. Do not quote numbers from
+> this file. Current measured numbers and their conditions are in `claims-evidence.md`; the audit record is
+> `audit-plan.md` (claims C-4 to C-14). The body below is kept unchanged as the 0.8.0 record.
+>
+> Known errors in the body:
+>
+> | Claim below | Correct |
+> |---|---|
+> | Radar 16 Hz (62.5 ms period), and the latency sums built on it | The radar profile's frame period is 50 ms, so 20 Hz configured; the simulated radar publishes at 20 Hz. Not measured on the real radar with the current tree. |
+> | YOLO inference ~35 Hz | 22–27 Hz measured 2026-09-02 under `sim.launch.py` (simulated radar, real camera, no colour-correction node). The 35 Hz figure has no artefact. |
+> | Camera 30 Hz | 30 Hz is the driver's request (best effort); the readouts were 46–54 Hz. |
+> | A "4 + 2 core layout" with two Cortex-A55 cores at 729 MHz, and the scheduler-spill explanation (sections 4.3 to 4.5) | The Orin Nano has six Cortex-A78AE cores, all with a 1728 MHz maximum; 729 MHz is a frequency-scaling step. The scheduler-spill explanation is wrong, and the cause of the overlay frame-rate drop has not been isolated. |
+> | Overlay 28–30 Hz falling to 13–17 Hz; CPU 83 % / 58 % / 67 %; GR3D 31–68 %; Tj about 57 °C (section 4) | No log or tegrastats capture is checked in, and the observation was made on an unoptimized build. Unverified. |
+> | Thermal throttle threshold of 90 °C | The thermal trip points on this board are 95 °C (junction) and 99 °C (CPU). |
+> | Camera-frame association through `TimestampAssociator` (section 2 row 6, section 6) | No node instantiates `TimestampAssociator`. The live buffer is `DetectionSetBuffer` in `fusion_node` (6 detection sets, 150 ms gate). The kernel-jitter explanation for the 50 ms to 150 ms change was never measured. |
+> | "IoU association" | Point-in-box: a projected track is matched to the first YOLO box (widened by 25 % per side) that contains it, one fused detection per matched box; `FUSION_IOU_THRESHOLD` is unused. |
+
 ## 1. Document Purpose
 
 This document characterises the end-to-end latency of the ProjectHailMary counter-unmanned-aerial-system (C-UAS) sensor fusion pipeline as it runs on the NVIDIA Jetson Orin Nano Super development platform.

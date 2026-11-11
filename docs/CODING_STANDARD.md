@@ -25,7 +25,7 @@ Application code under `src/cuas_fusion/` follows JSF AV C++ and MISRA C++:2023.
 
 ### Errors
 
-1. Application code contains no `try`, `catch`, or `throw`.
+1. Application code never throws. The only `try`/`catch` blocks are the catch-all in each node's `main()` (the single exception boundary, DEV-001) and two guards in `geofence_node.cpp` around yaml-cpp loading and field conversion, which throw on a malformed file.
 2. Errors are reported through return codes.
 3. `-fno-exceptions` is not applied because `rclcpp` propagates `std::exception` internally (DEV-001).
 4. `std::stoi` is replaced with `std::from_chars`. `cv_bridge::toCvShare` is replaced with `cuas::rosImageToBgr`.
@@ -87,7 +87,7 @@ deviation requires re-approval; a shrunken one only a changelog entry.
 
 - **Guidelines**: JSF AV 208 (exceptions), JSF AV 178 (RTTI), MISRA 18.x family.
 - **Reason**: R3 adopted code.
-- **Circumstances**: rclcpp/rosidl require exceptions and RTTI; `-fno-exceptions` does not link. Owned code contains zero `throw`/`try`/`catch` and no `dynamic_cast`/`typeid` (audit-verified).
+- **Circumstances**: rclcpp/rosidl require exceptions and RTTI; `-fno-exceptions` does not link. Owned code contains no `throw`; its only `try`/`catch` blocks are the `main()` boundaries and the geofence yaml-cpp guards; no `dynamic_cast`/`typeid`.
 - **Risk & precautions**: a library throw inside a callback would otherwise reach `std::terminate` with no fault record. Precaution (enforced): every `main()` wraps init/spin in the single sanctioned catch-all, logging FATAL to stderr with a defined exit code, so the fault path is deterministic and visible to the health monitor. Throwing boundary calls are replaced with non-throwing equivalents (`std::from_chars`, `cuas::rosImageToBgr`).
 - **Locations**: every node `main()` (tagged by the shared comment block).
 

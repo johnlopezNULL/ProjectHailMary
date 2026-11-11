@@ -1,5 +1,12 @@
 # PROJECT_MAP — cuas_fusion Counter-UAS Ground Station
 
+> **Status: superseded.** A map of the tree before the July to September 2026 work, kept as a historical
+> record. Current facts are in `claims-evidence.md`. What changed since: 22 executables (19 in
+> `full.launch.py`); about 12.9 k lines of C++ plus 3.0 k lines of tests; the launched tracker is
+> `imm_tracker_node` with covariance-scaled nearest-neighbour association (the Hungarian `track_manager` is
+> implemented and unit tested but not launched); the fusion time gate is 150 ms; the unit tests are 160
+> GoogleTest cases in 22 binaries.
+
 Jetson Orin Nano · ROS 2 Humble · C++17 · TI IWR6843ISK radar · Arducam AR0234 camera ·
 TensorRT YOLOv8 · ~11,150 LOC C++ across 2 packages, 21 executables.
 

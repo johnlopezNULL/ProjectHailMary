@@ -7,9 +7,9 @@
 ![tracking demo](docs/media/tracking.gif)
 _(recording in progress)_
 
-A 22-node (19 launched) ROS 2 Humble / C++17 pipeline that turns a TI IWR6843ISK 60 GHz mmWave radar and an
+A 22-node (19 in the full launch file, 18 started by default) ROS 2 Humble / C++17 pipeline that turns a TI IWR6843ISK 60 GHz mmWave radar and an
 AR0234 camera into tracked, classified, geofenced targets with a live operator view and a
-CoT/ATAK network feed. The camera and TensorRT engine run live on a Jetson Orin Nano 8 GB, and the radar path is validated on recorded bags. Written to MISRA C++:2023 / JPL
+CoT/ATAK network feed. The camera and TensorRT engine run live on a Jetson Orin Nano 8 GB. The radar path is exercised with a simulated radar; it last ran on the real radar in the April 2026 recordings, on an older tree. Written to MISRA C++:2023 / JPL
 Power-of-10 discipline: fixed-width types, no heap on hot paths, bounded loops, fixed-capacity
 containers, one exception boundary per process.
 
@@ -61,7 +61,7 @@ reopens the port but the sensor comes back idle: re-send the profile with
 | Quantity | Value |
 |---|---|
 | `/radar/detections`, `/tracks`, `/threat/reports`, `/fusion/detections` | 20 Hz |
-| YOLOv8s INT8 in the full pipeline | 22–27 Hz across 27 runs (≈24 typical); GPU load 10–90 % over a run, so "GPU-bound" is inferred, not isolated |
+| YOLOv8s INT8 in the running sim pipeline (`sim.launch.py`) | 22–27 Hz across 27 readouts (≈24 typical); GPU load 10–90 % over a run, so "GPU-bound" is inferred, not isolated |
 | `/tracks` stamp age at the subscriber | 2.7 ms p50 |
 | Unit tests | 160 GoogleTest cases in 22 binaries, 0 failures (`colcon test-result` prints 182: it adds one row per binary) |
 | Static analysis | cppcheck 2.7: 6 findings (1 warning, 3 style, 2 performance); `-Werror` clean |

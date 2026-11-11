@@ -7,13 +7,13 @@ This Interface Control Document (ICD) specifies every software interface exposed
 
 ## 2. System Interface Overview
 
-ProjectHailMary 0.8.0-alpha runs **twenty-one** ROS 2 nodes (twenty active in the standard hardware deployment plus one simulation substitute) that exchange data over **twenty-six** ROS topics typed against **nineteen** custom messages defined in `msgs/cuas_msgs/msg/` and a small number of stock ROS messages (`sensor_msgs/Image`, `sensor_msgs/PointCloud2`, `vision_msgs/Detection2DArray`, `visualization_msgs/MarkerArray`). The system has exactly one external interface: a UDP multicast Cursor-on-Target stream emitted by `cot_publisher_node` for ATAK-class clients.
+ProjectHailMary 0.8.0-alpha builds **twenty-two** ROS 2 node executables (`full.launch.py` lists nineteen, eighteen of which start by default; `sim.launch.py` swaps the radar parser for `sim_radar_node`) that exchange data over **twenty-six** ROS topics typed against **nineteen** custom messages defined in `msgs/cuas_msgs/msg/` and a small number of stock ROS messages (`sensor_msgs/Image`, `sensor_msgs/PointCloud2`, `vision_msgs/Detection2DArray`, `visualization_msgs/MarkerArray`). The system has exactly one external interface: a UDP multicast Cursor-on-Target stream emitted by `cot_publisher_node` for ATAK-class clients.
 
 The central data type is `cuas_msgs/msg/Track`, carried on the `/tracks` topic. It has exactly **one producer** (`imm_tracker_node`) and **ten consumers** (`fusion_node`, `kinematic_predictor_node`, `occlusion_predictor_node`, `threat_classifier_node`, `intent_classifier_node`, `geofence_node`, `reachability_node`, `cuas_visualizer_node`, `cuas_overlay_node`, `health_monitor_node`). Every downstream feature — fusion, prediction, threat classification, intent, geofencing, reachability, visualization, and health — derives from this single track stream, which makes `/tracks` the architectural narrow waist of the system.
 
 No node sets a custom `rclcpp::QoS` profile. Every publisher and subscriber is constructed with a plain integer history depth, so every topic uses the ROS 2 default profile: **Reliable** reliability, **Volatile** durability, **Keep Last** history, with the depth declared at construction. Where a topic's nominal rate is governed by a YAML parameter rather than a hard-coded timer, this document records the launch-file value; where it is governed by upstream callbacks, the rate is the upstream rate.
 
-**Time base (measurement path).** Every stamp on the measurement path — `/radar/detections` and `/radar/filtered` (radar_parser_node / sim_radar_node, forwarded by clutter_map_node), `/camera/image_raw` / `/camera/image_corrected`, `/inference/detections` (copies the camera stamp), and `/tracks` (`header.stamp` and per-track `timestamp_ns`) — is **CLOCK_MONOTONIC** (equivalently `RCL_STEADY_TIME`). Stamps within this set are directly comparable, and `fusion_node` performs per-measurement temporal alignment on them. Stamps outside this set (`/predicted_tracks*`, `/threat/reports`, diagnostic `stamp` fields) remain ROS system time and are used only for arrival-age checks inside a single node; they must never be differenced against a measurement-path stamp. Nodes needing wall-clock time for external output (CoT timestamps) obtain it independently of message stamps.
+**Time base (measurement path).** Every stamp on the measurement path — `/radar/detections` and `/radar/filtered` (radar_parser_node / sim_radar_node, forwarded by clutter_map_node), `/camera/image_raw` / `/camera/image_corrected`, `/inference/detections` (copies the camera stamp), and `/tracks` (`header.stamp` and per-track `timestamp_ns`) — is **CLOCK_MONOTONIC** (`cuas::now_ns()`). `RCL_STEADY_TIME` is CLOCK_MONOTONIC_RAW on Linux, which drifts from CLOCK_MONOTONIC, and must not be mixed with these stamps. Stamps within this set are directly comparable, and `fusion_node` performs per-measurement temporal alignment on them. Stamps outside this set (`/predicted_tracks*`, `/threat/reports`, diagnostic `stamp` fields) remain ROS system time and are used only for arrival-age checks inside a single node; they must never be differenced against a measurement-path stamp. Nodes needing wall-clock time for external output (CoT timestamps) obtain it independently of message stamps.
 
 ## 3. Topic Interface Definitions
 
@@ -24,7 +24,7 @@ No node sets a custom `rclcpp::QoS` profile. Every publisher and subscriber is c
 | Message Type | sensor_msgs/msg/PointCloud2                         |
 | Producer     | radar_parser_node (hardware) or sim_radar_node (sim)|
 | Consumers    | clutter_map_node, imm_tracker_node (via remap), health_monitor_node |
-| Rate         | 16 Hz                                               |
+| Rate         | 20 Hz configured (radar profile `frameCfg` period 50 ms; the simulated radar publishes at 20 Hz). Not measured on the real radar with the current tree. |
 | QoS          | ROS 2 default (Reliable, Volatile, Keep Last 10)    |
 | Frame ID     | radar_frame                                         |
 
@@ -39,7 +39,7 @@ No node sets a custom `rclcpp::QoS` profile. Every publisher and subscriber is c
 | Message Type | sensor_msgs/msg/PointCloud2                      |
 | Producer     | clutter_map_node                                 |
 | Consumers    | imm_tracker_node (via launch-file remap)         |
-| Rate         | 16 Hz (driven by `/radar/detections`)            |
+| Rate         | The `/radar/detections` rate (20 Hz configured)  |
 | QoS          | ROS 2 default (Reliable, Volatile, Keep Last 10) |
 | Frame ID     | radar_frame                                      |
 
@@ -75,7 +75,7 @@ No node sets a custom `rclcpp::QoS` profile. Every publisher and subscriber is c
 | Message Type | sensor_msgs/msg/Image                            |
 | Producer     | camera_node                                      |
 | Consumers    | cuas_color_correct_node, inference_node (when `color_correct:=false`), cuas_visualizer_node, health_monitor_node |
-| Rate         | 30 Hz (`CAMERA_FPS` in `constants.hpp`)          |
+| Rate         | 30 Hz requested (`CAMERA_FPS` in `constants.hpp`, best effort); 46–54 Hz measured 2026-09-02 |
 | QoS          | ROS 2 default (Reliable, Volatile, Keep Last 10) |
 | Frame ID     | camera                                           |
 
@@ -103,7 +103,7 @@ No node sets a custom `rclcpp::QoS` profile. Every publisher and subscriber is c
 | Message Type | vision_msgs/msg/Detection2DArray                 |
 | Producer     | inference_node                                   |
 | Consumers    | fusion_node                                      |
-| Rate         | ~35 Hz (TensorRT INT8 throughput on Orin Nano)   |
+| Rate         | 22–27 Hz measured 2026-09-02 under `sim.launch.py` (simulated radar, real camera, no colour-correction node); not measured under `full.launch.py`. See `claims-evidence.md`. |
 | QoS          | ROS 2 default (Reliable, Volatile, Keep Last 5)  |
 | Frame ID     | camera (forwarded from input image)              |
 
@@ -120,7 +120,7 @@ No node sets a custom `rclcpp::QoS` profile. Every publisher and subscriber is c
 | QoS          | ROS 2 default (Reliable, Volatile, Keep Last 5)                                        |
 | Frame ID     | radar_frame                                                                            |
 
-**Description:** Camera-radar fused detections produced by projecting tracked radar centroids into the camera image plane and IoU-associating with YOLO bounding boxes.
+**Description:** Camera-radar fused detections produced by projecting each track into the camera image plane and matching it to the first YOLO box whose extent, widened on every side by 25 % of the box's width and height, contains the projected point. Each matched box gives one fused detection with the box's label and the averaged, EMA-smoothed position of the tracks inside it; a track outside every box gives no fused detection.
 
 **Message Fields:** see `cuas_msgs/msg/FusedDetectionArray` and `cuas_msgs/msg/FusedDetection` in section 5.
 
@@ -291,7 +291,7 @@ No node sets a custom `rclcpp::QoS` profile. Every publisher and subscriber is c
 | QoS          | ROS 2 default (Reliable, Volatile, Keep Last 10) |
 | Frame ID     | N/A (no `Header`; uses `stamp` field instead)    |
 
-**Description:** Per-subsystem and aggregate liveness with EMA-smoothed measured rates against the expected radar=16 Hz, camera=30 Hz, tracker=20 Hz, classifier=20 Hz, predictor=20 Hz contracts.
+**Description:** Per-subsystem and aggregate liveness. Each topic's status comes from the gap since its last message (stale after 0.5 s, dead after 2 s); an EMA-smoothed measured rate is reported alongside. Expected rates (radar 20 Hz, camera 30 Hz, tracker, classifier and predictor 20 Hz) are configured but not yet compared against the measured rates.
 
 ### /visualization/track_markers
 
@@ -463,7 +463,7 @@ The CoT event UID format is `CUAS-TRACK-<track_id>`; `type` is `a-u-G` (atom, un
 | position_y_m           | float32 | m     | Position in `base_link` Y axis                                      |
 | position_z_m           | float32 | m     | Position in `base_link` Z axis                                      |
 | velocity_mps           | float32 | m/s   | Speed magnitude                                                     |
-| doppler_mps            | float32 | m/s   | Reported Doppler (currently 0.0F; reserved)                         |
+| doppler_mps            | float32 | m/s   | Radial speed from the IMM state estimate (positive = receding, negative = closing) |
 | class_label            | string  | —     | Class string ("unknown" until classifier joins)                     |
 | confidence             | float32 | [0,1] | Track confidence; decays on miss, gains on hit                      |
 | track_state            | string  | —     | Track state name (TENTATIVE/CONFIRMED/OCCLUDED/REACQUIRED/LOST)     |
@@ -512,7 +512,7 @@ The CoT event UID format is `CUAS-TRACK-<track_id>`; `type` is `a-u-G` (atom, un
 | timestamp_ns                | int64                      | ns    | Source timestamp                                  |
 | quality_score               | float32                    | [0,1] | Composite quality score                           |
 | dwell_time_s                | float32                    | s     | Time the track has been at or near threat range   |
-| escalation_state            | string                     | —     | UNKNOWN/BENIGN/SUSPECT/THREAT/THREATENING/ENGAGED |
+| escalation_state            | string                     | —     | UNKNOWN/TRACKED/IDENTIFIED/THREATENING/ENGAGED |
 | predicted_impact_x_m        | float32                    | m     | Forward impact projection X                       |
 | predicted_impact_y_m        | float32                    | m     | Forward impact projection Y                       |
 | exclusion_zones_violated    | geometry_msgs/Point[<=16]  | —     | Zone-centre points violated by this track         |
@@ -610,7 +610,7 @@ The CoT event UID format is `CUAS-TRACK-<track_id>`; `type` is `a-u-G` (atom, un
 |------------|-------------------------|-------|--------------------------------------|
 | zone_id    | string                  | —     | Zone identifier from YAML config     |
 | track_id   | uint32                  | —     | Track reference                      |
-| event_type | uint8                   | —     | Enum: ENTRY / EXIT / DWELL           |
+| event_type | uint8                   | —     | Enum: ENTERED / EXITED / INSIDE_THREAT |
 | distance_m | float32                 | m     | Distance to zone boundary            |
 | stamp      | builtin_interfaces/Time | —     | Publish timestamp                    |
 
