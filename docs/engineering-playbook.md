@@ -30,6 +30,8 @@ or a README number nobody can reproduce in the interview.
    ledger row the day a mistake happens, with its cost.
 6. Keep a **friction log** in the plan: every line of this file you had to guess at or deviate
    from — quote it, say what you did instead. Fold it back in at the end.
+7. **On this repo, WORKFLOW.md §3h (records on request) overrides three record steps in this file:** the retro, role 12's cold read of the record and the rewrite of the record after each fix happen only when John asks; the handoff entry stays short; the plan doc for a High change is still written.
+8. **On this repo, WORKFLOW.md §16 overrides §7 and role 7's harness per feature:** a feature adds a scene or mode to the standing sim, replay harness and readout and deletes none of them; a gitignored `launch/_harness_*` file may only start those tools with the feature's parameters.
 
 ---
 
@@ -509,6 +511,8 @@ Seed rows (generalised from the parent project's first fifteen; keep what applie
 | L17 | A cleanup `pkill -f <pattern>` matched the caller's own command line (heredoc text / the same pgrep string) and killed the gate wrapper three times, once leaving the whole sim graph running silently (2026-09-02) | ~10 min; the owner's reported "silent survivor blocks the next launch" failure reproduced by the harness itself | Never put a process pattern on the command line of a shell that a cleanup can reach | Launch and cleanup live in script files; the invocation line names only the script |
 | L18 | Five of seven fix batches touched a header included by every node; each cost a ~5-minute near-full rebuild on the target (2026-09-02) | ~20 min of gates | Never add a helper to an everywhere-included header when a new small header will do | New helpers get their own header; the gate line names the worker count (`--parallel-workers 1 MAKEFLAGS=-j3` on this box after the watchdog reset) |
 | L19 | The sim's scenes used +X as forward in a +Y-forward frame; every smoke since the first showed fusion at 0 Hz and nobody had asked why, because no lens was told to check the sim against the ICD frame (2026-09-02) | A whole proof pass measured a scene, not the pipeline | Never trust a harness scene's frame without checking it against the ICD | Role 4's guarantee list includes "frame convention per producer vs the ICD"; the harness readout prints track range and Doppler sign |
+
+Rows CL-01 to CL-48 in `docs/lessons-ledger.md` carry over the web-shop project's testing lessons. The seed rows above came from the same project; CL-36, CL-38, CL-35, CL-40, CL-39 and CL-32 restate L1, L2–L3, L6, L7–L11, L13 and L15 for testing. New rows here are this repo's own.
 
 ---
 

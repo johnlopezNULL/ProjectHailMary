@@ -84,6 +84,39 @@ are fine.
 3. Nits, at most five.
 4. One line: "No further findings." If nothing is wrong, say so plainly.
 
+## Test tools and harnesses
+
+A test tool (WORKFLOW.md section 16) gets one review round (WORKFLOW.md 3d). Extra rounds did not
+find timing bugs on the earlier web-shop project; mechanical checks did (`docs/lessons-ledger.md`).
+So do these six checks before the line-by-line read, and give each one's result (pass or fail) with
+the command output. They cover the tools the brief names, also those under "Paths to skip"
+(`launch/_harness_*`, `scripts/_*`).
+
+- **Sort every sleep.** Run `git grep -n -E 'sleep|wait_for' -- <the tool's paths>` and put each hit
+  in one class: (a) the interval of a poll with a time limit, (b) a pause with a comment giving its
+  reason, (c) a finding. A pause placed after an action and before the read that decides the result
+  is Important.
+- **The slow run is there.** The self-test includes a run where everything the tool waits for takes
+  at least 1.5 seconds to answer, and the output shows that run passing.
+- **Nothing real in a self-test.** Run `git grep -n -E '239\.[0-9]+\.[0-9]+\.[0-9]+|/dev/(radar|video|tty)' -- <self-test and fixture paths>`
+  and look for real hostnames too; a hit is acceptable only inside a comment or as an argument to a
+  pure function.
+- **Each test added with a fix fails without it.** The mutation list (WORKFLOW.md 3b) shows, for
+  each such test, its result with the fix taken out; a missing result is Important.
+- **Expected values do not reuse the computation under test.** Each one comes from hand
+  arithmetic, a reference implementation, a recorded output of a trusted run, or the ICD, and the
+  test says which.
+- **Each pass line says what it read** (WORKFLOW.md 3c): the counts or fields, the command or read,
+  and the allowed failures by exact text. A status word such as NOMINAL is fine inside such a line
+  (for example the `status` field of `/health/status` with the topics and window read); an exit code
+  or status word with nothing named beside it is Important.
+
+Also confirm that the tool starts listening before it acts, that the fake-versus-real table covers
+every judged input and output in every state, and that the tool grows the one the brief names and
+reuses its lists. End the report by saying, by name, whether a second round is needed; only a
+change to what the tool may write or send, or to when a hard-stop action may happen, needs one. A
+wait, a count or a field name is settled by a self-test case instead.
+
 ## Repeated past findings: always check
 
 Seed rows from the September 2026 audit (`docs/audit-plan.md`, `docs/claims-evidence.md`); add one
@@ -93,3 +126,16 @@ here whenever the never-again ledger gains a row.
   `frameCfg` period is 50 ms, so 20 Hz).
 - Fusion described as IoU when the code associates by point-in-padded-box containment.
 - A throughput number with no artefact behind it (YOLO "~35 Hz"; measured 22–27 Hz in-pipeline).
+
+Carried over from the earlier web-shop project (`docs/lessons-ledger.md`), November 23, 2026:
+
+- A fixed sleep before the read that judges an action (`scripts/play_and_echo.sh` sleeps 4 s after
+  starting the bag): wait, bounded, for the system's own signal (ledger CL-01).
+- An observer attached after the event: a subscriber started after the bag or the pipeline began
+  publishing, then judging "the first message"; every topic is Volatile (`docs/ICD.md`), so what came
+  before is lost. Subscribe first, or judge from a node's own counters (CL-03).
+- A fake faster or cleaner than the real sensor: no jitter, no dropped frames, instant startup, or
+  a different frame convention (the sim scenes that used +X as forward, playbook §14). Check the
+  fake-versus-real table (CL-02).
+- A bare pass flag: "exits 0" or "health NOMINAL" with no fields named, or a script that prints
+  WARNING and still exits 0 (`scripts/check_outputs.sh`) used as a check (CL-08).

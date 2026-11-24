@@ -7,8 +7,10 @@ The reason behind each rule is in `docs/engineering-playbook.md` §8.
 
 ## ⛔ Nothing writes to a sensor or a board as part of a test
 
-- **Never run `scripts/send_radar_config.sh`, a firmware flash, or anything else that writes to the
-  radar, the camera or the Jetson's persistent state** while testing, debugging, reproducing a bug or
+- **Never run `scripts/send_radar_config.sh`, `scripts/test_radar.py`, `scripts/run_radar.sh`,
+  `src/cuas_fusion/launch/full.launch.py` (it runs the config script on every start), a firmware
+  flash, or anything else that writes to the radar, the camera or the Jetson's persistent state**
+  while testing, debugging, reproducing a bug or
   "verifying the flow". "Test it", "finish the checklist" or "make sure it works" does **not**
   authorize it. Only John's explicit word, with John present, does, and the record names it.
 - **Read-only is fine:** listing devices, reading `/dev/radar_*` streams, `ros2 topic hz`, reading

@@ -13,8 +13,10 @@ file disagrees with it, AGENTS.md wins. The deep how-to is `docs/engineering-pla
 
 - **John** decides, approves each gate, merges, runs anything that touches the hardware, and is
   accountable. An agent's approval never counts as his, and no agent message is his consent.
-- **The Claude session** plans, writes exact briefs, decides engineering questions, verifies evidence
-  and answers John in short messages. It arms no background watches.
+- **Claude Fable** (the main session) is the orchestrator: it plans, writes exact briefs, decides
+  engineering questions, verifies evidence and answers John in short messages. It is the only one
+  that talks to John; builders, reviewers and grunts report only to it and never message each other.
+  It arms no background watches.
 - **Opus builders** write code, tests and docs from exact briefs (`.claude/agents/builder.md`).
 - **Opus reviewers** review in a fresh context with REVIEW.md (`.claude/agents/reviewer.md`).
 - **Sonnet grunts** run commands, apply exact hunks and collect outputs (`.claude/agents/grunt.md`).
@@ -36,24 +38,40 @@ c. **Runnable gates, output shown, sized by what changed.**
    - **Code changed** (`src/`, `msgs/`, `config/`, launch files, CMake, the Dockerfile): the gates of
      `docs/engineering-playbook.md` §6: clean build with `-DCUAS_WERROR=ON` (0 warnings), `colcon
      test` + `colcon test-result --verbose` (0 failed, count recorded), cppcheck against its recorded
-     baseline, the sim smoke (exits 0, health NOMINAL), `git diff --check`.
+     baseline, the sim smoke (`ros2 launch cuas_fusion sim.launch.py`; until a checked-in smoke
+     script exists, its pass line names the topics read with `ros2 topic hz` and for how long, the
+     `status` value read from `/health/status`, and the log lines allowed, by exact text),
+     `git diff --check`.
    - **Only docs, a harness or a script changed:** prove it (`git diff --quiet <last gated commit>
-     <new> -- src msgs` exits 0), run that script's own check, `git diff --check`, and cite the last
-     full gates by commit.
+     <new> -- src msgs test Dockerfile scripts/send_radar_config.sh .github` exits 0), run that
+     script's own check, `git diff --check`, and cite the last full gates by commit.
 
-   A gate without its output pasted is not passed.
+   A gate without its output pasted is not passed. **A pass names what it compared:** a gate's pass
+   line says what was compared (which counts, fields or files), how (which command, which read, over
+   which window), and which failures or warnings are allowed, by exact text. A bare exit code or a
+   status word ("exits 0", "NOMINAL", "pass") is not a pass.
 d. **Fresh-context review.** An Opus reviewer against REVIEW.md; fix. At most three rounds; after the
    first, re-review only the new diff. If round three still finds Important issues, stop and
-   reconsider the approach.
+   reconsider the approach. A test tool (section 16) gets one round, on its first complete version
+   with its self-test output; every later fix to it is proved by a self-test case that fails without
+   the fix, not by another round.
 e. **Pull request**, never a direct push to `main`. Its description has Testing, Risk tier, Contract
    changes (ICD / messages) and How to revert. GitHub Actions (`.github/workflows/build.yml`) builds
-   and tests every PR in Docker; the sim smoke and cppcheck are still the author's to run and show.
+   and tests every PR into `main` in Docker (PRs into an integration branch get no CI; their author
+   runs the suites, section 13); the sim smoke and cppcheck are still the author's to run and show.
    A PR that changes behaviour a test pins updates that test, with the reason, in the same PR.
 f. **Risk tier** decides what follows (section 4).
 g. **Bench run** for High changes (section 11).
 h. **Docs.** A `docs/HANDOFF.md` entry at the top; the ICD, architecture diagram and latency budget
    kept true in the same PR as the code that changes them; every number with its conditions and
    date. A docs-only branch is named `docs/<name>` and builds nothing.
+   **Records on request** (November 23, 2026). Keep the handoff entry to about 15 lines: what
+   changed, what is on `main`, how to revert, John's open decisions, what is owed, and section 9's
+   line. Three records wait until John asks for them: the retro (playbook §9.5), the cold-reader pass
+   of the record (playbook role 12), and rewriting the record after each fix. The plan doc that the
+   playbook's lifecycle requires for a High change (playbook §3 phase 2, §9.1) is still written. On
+   those three records this overrides `docs/engineering-playbook.md`. Test output and other proof go
+   in the PR description, and the handoff entry points there.
 
 ## 4. Risk tiers
 
@@ -97,9 +115,27 @@ reads or records something), never for a finding in the system under test:
   check. If passing would need that, stop.
 - Every fix is logged before the retry and listed in the report.
 - The same failure text twice in a row after a fix: stop.
-- **A read made too early** (a topic not up yet, a track not yet confirmed) is a harness failure only
-  when a later read in the same run shows the expected value with nothing in between that could have
-  produced it. A different value (wrong count, wrong class, wrong rate) is always a finding.
+- **A read made too early** (a topic not up yet, a track not yet confirmed) may be treated as a
+  harness failure, and its step rerun, only if every one of these four tests passes. Otherwise it is
+  a finding.
+  1. **Read-only mode.** The failed check read a readout, a topic or a log after an action, and the
+     harness mode it ran in has recorded no write (sensor, board, model, calibration, network) and no
+     finding.
+  2. **Absent, not wrong.** It saw an absence: no message yet, an empty message, no track yet, or
+     the value from before the action. Any other value (a wrong count, class, rate, id or position)
+     fails this test.
+  3. **Proved later in the same run.** A later read in the same run got the expected value and
+     passed, and no harness action between the two reads could have produced that value.
+  4. **Off the decision path and off the hardware.** The check is not about a threat level, an intent
+     label, a geofence state or a track's identity; no step before it wrote to a sensor; it does not
+     involve a model or calibration; and it did not run on real hardware.
+
+  The repair that comes with the rerun swaps the fixed wait for a bounded wait on the system's own
+  signal (section 16); it touches no expectation, bound or step. Each check gets this rerun at most
+  once: a second failure, or a wait that runs out its limit, is a finding, and so is any case that is
+  unclear. The log keeps both reads, the failed one and the passing one. **The rerun is disabled
+  until the harness keeps an action timeline** (each action and each read, with its time); until
+  then, every failed read is a finding.
 
 **Hard stops, never retried:** any write to a sensor or the board, a model or calibration change, a
 merge or push, and every finding in the system under test. A finding is never reclassified as a
@@ -127,13 +163,16 @@ report.
 
 - A High change's handoff entry ends with one line: review rounds, harness or bench attempts, stops by
   cause (system, harness, procedure), and hours from the last code commit to the bench pass.
+- Every change's section 9 line gives the wall-clock time of each test stage it ran (unit, replay,
+  gates, bench) and, when it included test-tool work, the hours on test tools beside the hours on
+  the product. Section 17 has the targets.
 - Reverts and incidents are the guardrail. When stops cluster on one cause, fix the method.
 
 ## 10. Not adopted, and why
 
 Merge queue, feature flags everywhere, nightly scanning agents: scale machinery for many authors. One
 owner and a few changes a week do not need it. (Unlike the SaaS repo, this repo does run CI on every
-PR: `build.yml`.)
+PR into `main`: `build.yml`.)
 
 ## 11. Bench runs (this repo's equivalent of the SaaS staging run)
 
@@ -169,7 +208,9 @@ PR: `build.yml`.)
 
 For work John wants landed together: an integration branch cut from `main`; every part's PR targets
 it, each with its own gates and review; the final PR to `main` is John's go and takes the highest tier
-of any part.
+of any part. A PR into the integration branch is ready only after every shared test suite has
+passed on the merged result: today `colcon test` and the sim smoke, later also the replay set and
+the desktop-app tests. The PR lists each suite by name with its count.
 
 ## 14. Hotfixes
 
@@ -185,3 +226,78 @@ symptom means stop and measure again. Within 24 hours, the bug finder on that di
 - Already here before: `docs/engineering-playbook.md` (ROS 2 / embedded edition, v1.0), CI.
 - Planned by John: replacing ROS 2 with his own runtime. Until it lands, the gates are the ROS ones;
   the pure C++ math classes (no ROS dependency) are the part that carries over, so keep them pure.
+- Added November 23, 2026 (branch `docs/testing-lessons`): the pass rule (3c), one review round for
+  test tools (3d), records on request (3h), the four-condition early read, switched off until an
+  action timeline exists (section 6), stage times (section 9), shared suites on the merged tree
+  (section 13), sections 16 and 17, `docs/testing-handbook.md` and `docs/lessons-ledger.md`. Not
+  built yet: the shared test bench itself (one sim source, one replay harness, one readout, their
+  self-tests with the slow leg, the action timeline, the bench manifest). Until it exists, sections
+  16 and 17 are rules a reviewer checks by hand.
+
+## 16. Test tools and their self-tests (November 23, 2026)
+
+**A test tool** is anything whose job is to test the product rather than to be it: a harness, a
+replay or bench script, a readout, a test driver, a fake sensor or a fake scene used only by tests,
+and the self-test of each. (`sim_radar_node` is product code under `src/` and runs the full gates;
+when its scenes serve as a fake sensor, the rules below apply to them too.) Other files say "a test
+tool (WORKFLOW.md section 16)" and mean this. REVIEW.md "Test tools and harnesses" has the
+reviewer's checks; `docs/testing-handbook.md` §5 to §7 explains the reasons.
+
+- **Grow the tool that already works.** No feature gets a test tool of its own (section 11). If the
+  standing test needs a new mode or scene, it goes into the tool that passed last (today the
+  `sim_radar_node` scenes and `replay.launch.py`; later the shared test bench). A brand-new tool needs
+  a reason written in the brief, and it reuses the existing tool's lists (known harmless warnings,
+  allowed addresses) unchanged instead of starting its own. This replaces the per-feature,
+  delete-after-use harness of `docs/engineering-playbook.md` §7 and role 7.
+- **Test it slow.** Each tool's self-test includes a run where everything the tool waits for (a
+  topic, a node starting, the TensorRT engine, a sensor stream) takes at least 1.5 seconds to answer,
+  and the self-test output shows that run passing.
+- **Fakes are faithful.** In every state a test puts it in, a fake behaves like the real thing; for
+  a sensor that covers frame period, jitter, dropped frames, startup delay, Doppler sign and frame
+  convention. The tool's facts file holds a fake-versus-real table listing each input and output the
+  test judges, per state, with the real value (taken from the code or a recorded bag) next to the
+  fake's. Any gap is closed in the fake or recorded as "first measured on the bench".
+- **Wait on signals, not on the clock.** Before judging, a tool polls with a time limit for the
+  system's own sign that it is done (the message arrives, the track is CONFIRMED, the node says it is
+  ready, the engine has loaded). A sleep in a harness or test script is either the interval of such a
+  poll or carries a comment saying why it is there. The tool starts listening before it acts: it
+  subscribes before the bag plays or the pipeline starts.
+- **Self-tests stay on this machine.** They use loopback or unresolvable addresses only: never the
+  CoT multicast group on a real network, never `/dev/radar_*` or a real camera.
+- **Look before touching hardware.** A tool's first step on real hardware only reads: list the
+  devices, read the streams and the parameter dump, write nothing (AGENTS.md). Before any hard-stop
+  action (a write to a sensor or the board, a model or calibration change), the tool first runs the
+  exact code that follows that action in a mode that changes nothing.
+- **Gate only on known values.** What a step before a hard-stop action requires must be our own data
+  or a value an earlier run recorded on this board; anything else is logged, not required.
+- **Review once, then prove fixes by self-test.** The first complete version gets one review round,
+  with its self-test output (section 3d). The same reviewer looks again, at the diff only, just when
+  a later change alters what the tool may write or send (a sensor, the board, the network) or when a
+  hard-stop action may happen. Any other fix (a wait, a count, a field name) comes with a self-test
+  case that fails without it.
+
+**Why.** On the earlier web-shop project, test tools rather than the product caused most stopped
+runs, and extra review rounds missed the timing bugs that a slow run and a fake-versus-real table
+then found. The counts and the lessons are in `docs/lessons-ledger.md`.
+
+## 17. Speed targets (November 23, 2026)
+
+These are targets set on November 23, 2026; none is measured on this repo yet. The first measured
+run of each stage is written beside its target with its date and machine; the targets are John's to
+change.
+
+- Unit tests for the changed package: under 1 minute on the development desktop.
+- The replay and integration suite: under 10 minutes.
+- The full gates of section 3c: under 20 minutes.
+- A bench run: at most 30 minutes of John's time.
+- Test-tool work for a change (harness, scripts, procedure) is capped at the time spent on its
+  product code and tests; past that, stop and ask John section 11's one question. A change whose
+  product is a test tool (the shared bench, a self-test) is capped by the budget in its brief instead.
+  Section 11's 4-hour and 1-hour bench-setup budgets also apply; whichever trips first stops the
+  work.
+- A stage that misses its target twice in a row gets a ledger row (section 7) and is fixed in the
+  tool, not worked around.
+
+Measured so far: two builds of both packages on the Jetson took 4 min 57 s and 5 min 41 s, and an
+incremental build 50 s, during the September 2, 2026 audit (`docs/audit-log.md`). The test run, the
+full gates and CI are not measured yet.
